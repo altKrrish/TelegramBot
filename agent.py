@@ -13,10 +13,19 @@ import httpx
 from openai import OpenAI
 
 # ---------------------------------------------------------------------------
-# OpenRouter client
+# OpenRouter client — FREE models only
 # ---------------------------------------------------------------------------
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
-MODEL = os.environ.get("MODEL", "google/gemini-2.5-flash")
+
+# Free models on OpenRouter (tried in order). All support function calling.
+FREE_MODELS = [
+    "google/gemini-2.5-flash-preview-05-20:free",
+    "google/gemini-2.0-flash-exp:free",
+    "deepseek/deepseek-r1-0528:free",
+    "qwen/qwen3-235b-a22b:free",
+    "meta-llama/llama-4-maverick:free",
+]
+MODEL = os.environ.get("MODEL", FREE_MODELS[0])
 
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
@@ -218,6 +227,36 @@ class PythonExecutor:
 
 
 # ---------------------------------------------------------------------------
+# LLM call with automatic fallback across free models
+# ---------------------------------------------------------------------------
+
+def _call_llm_with_fallback(messages, log_entries, log_url):
+    """Try each free model in order until one succeeds."""
+    models_to_try = [MODEL] + [m for m in FREE_MODELS if m != MODEL]
+
+    for model in models_to_try:
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                tools=TOOLS,
+                tool_choice="auto",
+                max_tokens=16384,
+            )
+            log_entries.append({"event": "llm_ok", "model": model, "ts": time.time()})
+            return resp
+        except Exception as exc:
+            log_entries.append(
+                {"event": "llm_error", "model": model, "error": str(exc), "ts": time.time()}
+            )
+            time.sleep(1)
+            continue
+
+    log_entries.append({"event": "all_models_failed", "ts": time.time()})
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Agent loop
 # ---------------------------------------------------------------------------
 MAX_ITERATIONS = 20
@@ -261,29 +300,9 @@ def run_agent(
         t0 = time.time()
         log_entries.append({"event": "llm_request", "iter": iteration, "ts": t0})
 
-        try:
-            resp = client.chat.completions.create(
-                model=MODEL,
-                messages=messages,
-                tools=TOOLS,
-                tool_choice="auto",
-                max_tokens=16384,
-            )
-        except Exception as exc:
-            log_entries.append({"event": "llm_error", "error": str(exc), "ts": time.time()})
-            # retry once after a short wait
-            time.sleep(2)
-            try:
-                resp = client.chat.completions.create(
-                    model=MODEL,
-                    messages=messages,
-                    tools=TOOLS,
-                    tool_choice="auto",
-                    max_tokens=16384,
-                )
-            except Exception as exc2:
-                log_entries.append({"event": "llm_fatal", "error": str(exc2), "ts": time.time()})
-                return json.dumps({"answer": None, "log_url": log_url})
+        resp = _call_llm_with_fallback(messages, log_entries, log_url)
+        if resp is None:
+            return json.dumps({"answer": None, "log_url": log_url})
 
         choice = resp.choices[0]
         msg = choice.message
