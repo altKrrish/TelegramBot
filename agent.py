@@ -19,13 +19,13 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 
 # Free models on OpenRouter (tried in order). All support tool/function calling.
 FREE_MODELS = [
-    "nvidia/nemotron-3-super-120b-a12b:free",
     "google/gemma-4-31b-it:free",
     "google/gemma-4-26b-a4b-it:free",
-    "nvidia/nemotron-3-ultra-550b-a55b:free",
     "openai/gpt-oss-20b:free",
-    "nvidia/nemotron-3-nano-30b-a3b:free",
     "inclusionai/ling-3.0-flash:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "nvidia/nemotron-3-nano-30b-a3b:free",
 ]
 MODEL = os.environ.get("MODEL", FREE_MODELS[0])
 
@@ -47,18 +47,22 @@ WORKFLOW:
 1. Read the question. Identify what data is needed and what analysis to perform.
 2. If the question embeds data inline, parse it directly in python_exec.
 3. If URLs are mentioned, fetch them with web_fetch first.
-4. If the question references a well-known dataset (MOSPI, etc.) without a URL, use your training knowledge to answer directly OR try to fetch from known URLs.
+4. If the question references a well-known dataset (MOSPI, etc.) without a URL, search/fetch data using web_fetch OR use python_exec / your knowledge to answer.
 5. Use python_exec to run analysis code. You may call tools multiple times.
-6. When you have the answer, reply with **ONLY** the JSON object the question asks for — no prose, no markdown fences, no explanation.
+6. When you have the final answer, reply with ONLY a single JSON object.
 
-CRITICAL RULES:
-- Your final text reply must be a single valid JSON object and nothing else.
-- The question specifies the exact JSON shape. Match it precisely.
+CRITICAL FORMATTING RULES:
+- Your final text reply MUST be a single valid JSON object and NOTHING ELSE.
+- Do NOT include prose, explanation, markdown code fences, or citation markers (like 【...】).
+- Match the exact JSON keys/structure requested by the question.
 - For the `log_url` field, use exactly: __LOG_URL__
-- Use proper casing for names (e.g. "Assam", not "assam").
-- Numeric answers: use the type the question asks for (int vs float).
-- If the question says "Reply with ONLY this JSON object …", obey exactly.
-- NEVER wrap your answer in markdown code fences.
+- Use proper casing for names (e.g. "Assam" or "Uttar Pradesh").
+- Numeric answers: match the exact type asked for (int vs float).
+
+EXAMPLE:
+Question: Which state has highest maternal mortality rate based on MOSPI data? Reply with ONLY this JSON object and nothing else: {"answer": {"state": "<state name>"}, "log_url": "<url>"}
+Your Response:
+{"answer": {"state": "Uttar Pradesh"}, "log_url": "__LOG_URL__"}
 """
 
 # ---------------------------------------------------------------------------

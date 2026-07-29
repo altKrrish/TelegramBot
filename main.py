@@ -64,47 +64,68 @@ def _send_telegram(chat_id: int, text: str):
 def _format_reply(agent_response: str, log_url: str) -> str:
     """
     Ensure the agent's output is a valid JSON string with answer + log_url.
-    Handles cases where the LLM wraps in markdown fences or forgets log_url.
+    Handles markdown fences, citation artifacts, and missing log_url keys.
     """
     text = agent_response.strip()
 
-    # Strip markdown code fences if present
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*", "", text)
-        text = re.sub(r"\s*```$", "", text)
-        text = text.strip()
+    # Remove Nemotron / RAG citation artifacts like 【{"id":0,"cursor":0,"loc":0}】
+    text = re.sub(r"【.*?】", "", text).strip()
 
-    # Try to parse as JSON
+    # Strip markdown code fences if present
+    if "```" in text:
+        fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+        if fence_match:
+            text = fence_match.group(1).strip()
+        else:
+            text = re.sub(r"^```(?:json)?\s*", "", text)
+            text = re.sub(r"\s*```$", "", text)
+            text = text.strip()
+
+    def _is_dummy_citation(o):
+        return isinstance(o, dict) and set(o.keys()) <= {"id", "cursor", "loc"}
+
+    obj = None
     try:
-        obj = json.loads(text)
+        candidate = json.loads(text)
+        if not _is_dummy_citation(candidate):
+            obj = candidate
     except json.JSONDecodeError:
-        # Try to extract a JSON object from the text
+        pass
+
+    if obj is None:
+        # Search for inner JSON objects {...}
+        matches = re.findall(r"\{[^{}]*\}", text)
+        for m in reversed(matches):
+            try:
+                candidate = json.loads(m)
+                if not _is_dummy_citation(candidate):
+                    obj = candidate
+                    break
+            except json.JSONDecodeError:
+                continue
+
+    if obj is None:
         m = re.search(r"\{.*\}", text, re.DOTALL)
         if m:
             try:
-                obj = json.loads(m.group())
+                candidate = json.loads(m.group())
+                if not _is_dummy_citation(candidate):
+                    obj = candidate
             except json.JSONDecodeError:
-                obj = None
-        else:
-            obj = None
+                pass
 
     if obj is None:
-        # Last resort: wrap raw text as answer
         return json.dumps({"answer": text, "log_url": log_url})
 
     if isinstance(obj, dict):
-        # Always overwrite log_url with the correct one
-        if "log_url" in obj:
+        if "answer" in obj and "log_url" in obj:
             obj["log_url"] = log_url
             return json.dumps(obj)
-        # If the LLM returned {"answer": ..., ...} but forgot log_url
         if "answer" in obj:
             obj["log_url"] = log_url
             return json.dumps(obj)
-        # LLM returned just the answer object (e.g. {"state": "Assam"})
         return json.dumps({"answer": obj, "log_url": log_url})
 
-    # Scalar or list answer
     return json.dumps({"answer": obj, "log_url": log_url})
 
 
