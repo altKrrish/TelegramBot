@@ -17,13 +17,15 @@ from openai import OpenAI
 # ---------------------------------------------------------------------------
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 
-# Free models on OpenRouter (tried in order). All support function calling.
+# Free models on OpenRouter (tried in order). All support tool/function calling.
 FREE_MODELS = [
-    "google/gemini-2.5-flash-preview-05-20:free",
-    "google/gemini-2.0-flash-exp:free",
-    "deepseek/deepseek-r1-0528:free",
-    "qwen/qwen3-235b-a22b:free",
-    "meta-llama/llama-4-maverick:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "google/gemma-4-31b-it:free",
+    "google/gemma-4-26b-a4b-it:free",
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "openai/gpt-oss-20b:free",
+    "nvidia/nemotron-3-nano-30b-a3b:free",
+    "inclusionai/ling-3.0-flash:free",
 ]
 MODEL = os.environ.get("MODEL", FREE_MODELS[0])
 
